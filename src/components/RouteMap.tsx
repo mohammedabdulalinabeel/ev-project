@@ -1,0 +1,122 @@
+"use client";
+
+import { useEffect } from "react";
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Popup,
+  Polyline,
+  useMap,
+} from "react-leaflet";
+import "leaflet/dist/leaflet.css";
+import L from "leaflet";
+
+// Fix Leaflet marker icon issue in Next.js
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
+  iconUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
+  shadowUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
+});
+
+interface RouteMapProps {
+  vehicleLat: number | null;
+  vehicleLon: number | null;
+  destLat: number | null;
+  destLon: number | null;
+  resolvedStart: string;
+  resolvedDest: string;
+  routeCoords: [number, number][];
+}
+
+// Auto fit route bounds component
+function FitBounds({ routeCoords }: { routeCoords: [number, number][] }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (routeCoords.length > 0) {
+      const bounds = L.latLngBounds(routeCoords);
+      map.fitBounds(bounds, { padding: [50, 50] });
+    }
+  }, [routeCoords, map]);
+
+  return null;
+}
+
+export default function RouteMap({
+  vehicleLat,
+  vehicleLon,
+  destLat,
+  destLon,
+  resolvedStart,
+  resolvedDest,
+  routeCoords,
+}: RouteMapProps) {
+  const startPoint: [number, number] | null =
+    routeCoords.length > 0 ? routeCoords[0] : vehicleLat && vehicleLon
+    ? [vehicleLat, vehicleLon]
+    : null;
+
+  const endPoint: [number, number] | null =
+    routeCoords.length > 0
+      ? routeCoords[routeCoords.length - 1]
+      : destLat && destLon
+      ? [destLat, destLon]
+      : null;
+
+  const center: [number, number] =
+    startPoint || [13.0827, 80.2707]; // Chennai default
+
+  return (
+    <MapContainer
+      center={center}
+      zoom={12}
+      style={{
+        height: "450px",
+        width: "100%",
+        borderRadius: "16px",
+      }}
+    >
+      <TileLayer
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        attribution="&copy; OpenStreetMap contributors"
+      />
+
+      {/* Auto zoom to route */}
+      {routeCoords.length > 0 && <FitBounds routeCoords={routeCoords} />}
+
+      {/* Start Marker */}
+      {startPoint && (
+        <Marker position={startPoint}>
+          <Popup>
+            <div className="text-sm">
+              <b>Start</b>
+              <div>{resolvedStart || "Start Location"}</div>
+            </div>
+          </Popup>
+        </Marker>
+      )}
+
+      {/* Destination Marker */}
+      {endPoint && (
+        <Marker position={endPoint}>
+          <Popup>
+            <div className="text-sm">
+              <b>Destination</b>
+              <div>{resolvedDest || "Destination Location"}</div>
+            </div>
+          </Popup>
+        </Marker>
+      )}
+
+      {/* Route Line */}
+      {routeCoords.length > 0 && (
+        <Polyline positions={routeCoords} pathOptions={{ color: "blue" }} />
+      )}
+    </MapContainer>
+  );
+}
