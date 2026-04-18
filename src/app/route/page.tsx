@@ -6,8 +6,77 @@ import dynamic from "next/dynamic";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { MapPin } from "lucide-react";
 
 const RouteMap = dynamic(() => import("@/components/RouteMap"), { ssr: false });
+
+type Station = {
+  id: number;
+  name: string;
+  location: string;
+  chargerType: string;
+  status: string;
+  lat: number;
+  lon: number;
+};
+
+const stations: Station[] = [
+  {
+    id: 1,
+    name: "EV Station - T Nagar",
+    location: "Chennai",
+    chargerType: "Fast Charger",
+    status: "Available",
+    lat: 13.0418,
+    lon: 80.2341,
+  },
+  {
+    id: 2,
+    name: "EV Station - Velachery",
+    location: "Chennai",
+    chargerType: "Normal Charger",
+    status: "Busy",
+    lat: 12.9756,
+    lon: 80.2209,
+  },
+  {
+    id: 3,
+    name: "EV Station - Anna Nagar",
+    location: "Chennai",
+    chargerType: "Fast Charger",
+    status: "Offline",
+    lat: 13.0878,
+    lon: 80.2102,
+  },
+  {
+    id: 4,
+    name: "EV Station - Guindy",
+    location: "Chennai",
+    chargerType: "Fast Charger",
+    status: "Available",
+    lat: 13.0067,
+    lon: 80.2206,
+  },
+];
+
+function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function getMinDistanceToRoute(stationLat: number, stationLon: number, routeCoords: [number, number][]) {
+  if (routeCoords.length === 0) return Infinity;
+  let minDistance = Infinity;
+  for (const [lat, lon] of routeCoords) {
+    const dist = getDistanceKm(stationLat, stationLon, lat, lon);
+    if (dist < minDistance) minDistance = dist;
+  }
+  return minDistance;
+}
 
 interface Suggestion {
   label: string;
@@ -22,8 +91,6 @@ interface RouteStep {
 }
 
 export default function RoutePlannerPage() {
-  const [start, setStart] = useState("");
-  const [destination, setDestination] = useState("");
 
   const [routeCoords, setRouteCoords] = useState<[number, number][]>([]);
   const [distanceKm, setDistanceKm] = useState<number | null>(null);
@@ -37,13 +104,20 @@ export default function RoutePlannerPage() {
   const [destLat, setDestLat] = useState<number | null>(null);
   const [destLon, setDestLon] = useState<number | null>(null);
 
-  const [resolvedStart, setResolvedStart] = useState("");
   const [resolvedDest, setResolvedDest] = useState("");
 
-  const [startSuggestions, setStartSuggestions] = useState<Suggestion[]>([]);
-  const [destSuggestions, setDestSuggestions] = useState<Suggestion[]>([]);
-
   const [isLoading, setIsLoading] = useState(false);
+
+  const [battery, setBattery] = useState(60);
+  const FULL_RANGE_KM = 300;
+  const remainingRange = (battery / 100) * FULL_RANGE_KM;
+
+  const reachableStations =
+    routeCoords.length > 0
+      ? stations.filter((station) => getMinDistanceToRoute(station.lat, station.lon, routeCoords) <= remainingRange)
+      : vehicleLat && vehicleLon
+      ? stations.filter((station) => getDistanceKm(vehicleLat, vehicleLon, station.lat, station.lon) <= remainingRange)
+      : [];
 
   useEffect(() => {
     navigator.geolocation.getCurrentPosition(
@@ -57,65 +131,19 @@ export default function RoutePlannerPage() {
     );
   }, []);
 
-  // Start suggestions
-  useEffect(() => {
-    if (!start.trim()) {
-      setStartSuggestions([]);
+  const findRouteToStation = async (station: Station) => {
+    if (!vehicleLat || !vehicleLon) {
+      setError("Waiting for live location...");
       return;
     }
 
-    const timeout = window.setTimeout(async () => {
-      try {
-        const response = await fetch(
-          `/api/route/geocode?query=${encodeURIComponent(start)}`
-        );
-        const data = await response.json();
-        if (response.ok) setStartSuggestions(data.suggestions || []);
-        else setStartSuggestions([]);
-      } catch {
-        setStartSuggestions([]);
-      }
-    }, 300);
-
-    return () => window.clearTimeout(timeout);
-  }, [start]);
-
-  // Destination suggestions
-  useEffect(() => {
-    if (!destination.trim()) {
-      setDestSuggestions([]);
-      return;
-    }
-
-    const timeout = window.setTimeout(async () => {
-      try {
-        const response = await fetch(
-          `/api/route/geocode?query=${encodeURIComponent(destination)}`
-        );
-        const data = await response.json();
-        if (response.ok) setDestSuggestions(data.suggestions || []);
-        else setDestSuggestions([]);
-      } catch {
-        setDestSuggestions([]);
-      }
-    }, 300);
-
-    return () => window.clearTimeout(timeout);
-  }, [destination]);
-
-  const findRoute = async () => {
     try {
       setError("");
       setIsLoading(true);
 
-      if (!start || !destination) {
-        setError("Please enter start and destination place names.");
-        return;
-      }
-
       const response = await axios.post("/api/route/ors", {
-        start,
-        destination,
+        start: `${vehicleLat}, ${vehicleLon}`,
+        destination: `${station.lat}, ${station.lon}`,
       });
 
       const coords = response.data.features[0].geometry.coordinates;
@@ -128,8 +156,7 @@ export default function RoutePlannerPage() {
       setDistanceKm(distMeters / 1000);
       setDurationMin(durationSec / 60);
 
-      setResolvedStart(start);
-      setResolvedDest(destination);
+      setResolvedDest(station.name);
 
       // steps
       const routeSteps =
@@ -168,75 +195,29 @@ export default function RoutePlannerPage() {
 
       <Card className="mt-6 rounded-2xl shadow-md">
         <CardHeader>
-          <CardTitle>Enter Route Details</CardTitle>
+          <CardTitle>Live Location & Battery</CardTitle>
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {/* Start */}
-          <div className="relative">
-            <label className="block font-medium text-gray-700">
-              Start Location
-            </label>
-            <Input
-              placeholder="e.g., Chennai Airport"
-              value={start}
-              onChange={(e) => setStart(e.target.value)}
-              className="mt-2"
-            />
-            {startSuggestions.length > 0 && (
-              <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border bg-white shadow-lg">
-                {startSuggestions.map((suggestion) => (
-                  <li
-                    key={`${suggestion.lat}-${suggestion.lon}`}
-                    onClick={() => {
-                      setStart(suggestion.label);
-                      setResolvedStart(suggestion.label);
-                      setStartSuggestions([]);
-                    }}
-                    className="cursor-pointer px-3 py-2 hover:bg-slate-100"
-                  >
-                    {suggestion.label}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
 
-          {/* Destination */}
-          <div className="relative">
-            <label className="block font-medium text-gray-700">
-              Destination Location
-            </label>
-            <Input
-              placeholder="e.g., T.T.K. Road"
-              value={destination}
-              onChange={(e) => setDestination(e.target.value)}
-              className="mt-2"
-            />
-            {destSuggestions.length > 0 && (
-              <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border bg-white shadow-lg">
-                {destSuggestions.map((suggestion) => (
-                  <li
-                    key={`${suggestion.lat}-${suggestion.lon}`}
-                    onClick={() => {
-                      setDestination(suggestion.label);
-                      setResolvedDest(suggestion.label);
-                      setDestSuggestions([]);
-                    }}
-                    className="cursor-pointer px-3 py-2 hover:bg-slate-100"
-                  >
-                    {suggestion.label}
-                  </li>
-                ))}
-              </ul>
-            )}
+          {/* Battery Setup */}
+          <div className="mt-2 text-sm text-gray-600 bg-slate-50 p-3 rounded-lg border">
+            <div className="flex justify-between items-center mb-2">
+              <label className="font-medium text-gray-700 flex-1">EV Battery (%)</label>
+              <Input
+                type="number"
+                min="0"
+                max="100"
+                value={battery}
+                onChange={(e) => setBattery(Number(e.target.value))}
+                className="w-24 ml-2"
+              />
+            </div>
+            <p>Estimated Range: <span className="font-semibold text-green-600">{remainingRange.toFixed(1)} km</span></p>
           </div>
 
           {error && <p className="text-red-600">{error}</p>}
-
-          <Button onClick={findRoute} className="w-full" disabled={isLoading}>
-            {isLoading ? "Finding route..." : "Get Route"}
-          </Button>
+          {isLoading && <p className="text-blue-600">Finding route...</p>}
 
           {distanceKm && (
             <div className="space-y-1">
@@ -260,10 +241,10 @@ export default function RoutePlannerPage() {
         </CardHeader>
 
         <CardContent>
-          {resolvedStart && resolvedDest && (
+          {resolvedDest && (
             <div className="mb-4 rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
               <p>
-                <span className="font-semibold">From:</span> {resolvedStart}
+                <span className="font-semibold">From:</span> Live Location
               </p>
               <p>
                 <span className="font-semibold">To:</span> {resolvedDest}
@@ -271,16 +252,18 @@ export default function RoutePlannerPage() {
             </div>
           )}
 
-          <RouteMap
-            vehicleLat={vehicleLat}
-            vehicleLon={vehicleLon}
-            destLat={destLat}
-            destLon={destLon}
-            routeCoords={routeCoords}
-            resolvedStart={resolvedStart}
-            resolvedDest={resolvedDest}
-          />
-        </CardContent>
+            <RouteMap
+              vehicleLat={vehicleLat}
+              vehicleLon={vehicleLon}
+              destLat={destLat}
+              destLon={destLon}
+              routeCoords={routeCoords}
+              resolvedStart="Live Location"
+              resolvedDest={resolvedDest}
+              reachableStations={reachableStations}
+              onRouteToStation={findRouteToStation}
+            />
+          </CardContent>
       </Card>
 
       {/* Steps */}

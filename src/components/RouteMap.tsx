@@ -31,6 +31,15 @@ interface RouteMapProps {
   resolvedStart: string;
   resolvedDest: string;
   routeCoords: [number, number][];
+  reachableStations?: Array<{
+    id: number;
+    name: string;
+    lat: number;
+    lon: number;
+    status: string;
+    chargerType: string;
+  }>;
+  onRouteToStation?: (station: any) => void;
 }
 
 // Auto fit route bounds component
@@ -55,6 +64,8 @@ export default function RouteMap({
   resolvedStart,
   resolvedDest,
   routeCoords,
+  reachableStations = [],
+  onRouteToStation,
 }: RouteMapProps) {
   const startPoint: [number, number] | null =
     routeCoords.length > 0 ? routeCoords[0] : vehicleLat && vehicleLon
@@ -112,6 +123,28 @@ export default function RouteMap({
           </Popup>
         </Marker>
       )}
+
+      {/* Reachable Charging Stations */}
+      {reachableStations.map((station) => (
+        <Marker key={station.id} position={[station.lat, station.lon]}>
+          <Popup>
+            <div className="text-sm">
+              <b className="text-green-700">EV Station</b>
+              <div>{station.name}</div>
+              <div className="text-xs text-slate-500">{station.chargerType}</div>
+              <div className="text-xs font-semibold">{station.status}</div>
+              {onRouteToStation && (
+                <button
+                  onClick={() => onRouteToStation(station)}
+                  className="mt-2 w-full bg-blue-600 text-white rounded px-2 py-1 text-xs hover:bg-blue-700 transition"
+                >
+                  Get Route
+                </button>
+              )}
+            </div>
+          </Popup>
+        </Marker>
+      ))}
 
       {/* Route Line */}
       {routeCoords.length > 0 && (
