@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -11,18 +11,23 @@ import {
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 
+export type ChargerMapMarker = {
+  id: number | string;
+  name: string;
+  lat: number;
+  lon: number;
+  location?: string;
+};
+
 interface MapProps {
-  vehicleLat: number | null;
-  vehicleLon: number | null;
-  filteredStations: Array<{
-    id: number | string;
-    name: string;
-    lat: number;
-    lon: number;
-  }>;
+  centerLat: number;
+  centerLon: number;
+  stations: ChargerMapMarker[];
+  selectedStationId?: number | string;
+  onStationSelect?: (station: ChargerMapMarker) => void;
 }
 
-// Current location icon (Blue)
+// Search center icon (Blue)
 const userIcon = new L.Icon({
   iconUrl: "https://cdn-icons-png.flaticon.com/512/684/684908.png",
   iconSize: [40, 40],
@@ -36,68 +41,37 @@ const stationIcon = new L.Icon({
   iconAnchor: [20, 40],
 });
 
-function FitStationsAndUser({
-  userLat,
-  userLon,
-  stations,
-  boundsRevision,
+function FlyToCenter({
+  lat,
+  lon,
+  zoom = 13,
 }: {
-  userLat: number | null;
-  userLon: number | null;
-  stations: MapProps["filteredStations"];
-  boundsRevision: string;
+  lat: number;
+  lon: number;
+  zoom?: number;
 }) {
   const map = useMap();
-  const stationsRef = useRef(stations);
-  stationsRef.current = stations;
 
   useEffect(() => {
-    const list = stationsRef.current;
-    const points: L.LatLngExpression[] = [];
-    if (userLat != null && userLon != null) {
-      points.push([userLat, userLon]);
-    }
-    for (const s of list) {
-      points.push([s.lat, s.lon]);
-    }
-    if (points.length === 0) return;
-    if (points.length === 1) {
-      map.setView(points[0] as L.LatLngTuple, 14);
-      return;
-    }
-    map.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 15 });
-  }, [map, userLat, userLon, boundsRevision]);
+    map.flyTo([lat, lon], zoom, { duration: 0.8 });
+  }, [map, lat, lon, zoom]);
 
   return null;
 }
 
 export default function Map({
-  vehicleLat,
-  vehicleLon,
-  filteredStations,
+  centerLat,
+  centerLon,
+  stations,
+  selectedStationId,
+  onStationSelect,
 }: MapProps) {
-  const hasUser =
-    vehicleLat != null &&
-    vehicleLon != null &&
-    Number.isFinite(vehicleLat) &&
-    Number.isFinite(vehicleLon);
-
-  const center: [number, number] = hasUser
-    ? [vehicleLat, vehicleLon]
-    : [13.0827, 80.2707];
-
-  const boundsRevision = useMemo(
-    () =>
-      `${vehicleLat ?? ""},${vehicleLon ?? ""}|${filteredStations
-        .map((s) => `${s.id}:${s.lat},${s.lon}`)
-        .join(";")}`,
-    [vehicleLat, vehicleLon, filteredStations]
-  );
+  const center: [number, number] = [centerLat, centerLon];
 
   return (
     <MapContainer
       center={center}
-      zoom={12}
+      zoom={13}
       style={{ height: "400px", width: "100%", borderRadius: "16px" }}
     >
       <TileLayer
@@ -105,29 +79,31 @@ export default function Map({
         attribution='&copy; OpenStreetMap contributors'
       />
 
-      <FitStationsAndUser
-        userLat={hasUser ? vehicleLat : null}
-        userLon={hasUser ? vehicleLon : null}
-        stations={filteredStations}
-        boundsRevision={boundsRevision}
-      />
+      <FlyToCenter lat={centerLat} lon={centerLon} />
 
-      {hasUser && (
-        <Marker position={[vehicleLat!, vehicleLon!]} icon={userIcon}>
-          <Popup>
-            <b>Your Location</b>
-          </Popup>
-        </Marker>
-      )}
+      <Marker position={[centerLat, centerLon]} icon={userIcon}>
+        <Popup>
+          <b>Search center</b>
+        </Popup>
+      </Marker>
 
-      {filteredStations.map((station) => (
+      {stations.map((station) => (
         <Marker
           key={String(station.id)}
           position={[station.lat, station.lon]}
           icon={stationIcon}
+          eventHandlers={{
+            click: () => onStationSelect?.(station),
+          }}
         >
           <Popup>
-            <b>{station.name}</b>
+            <div className="space-y-1 text-sm">
+              <b>{station.name}</b>
+              {station.location ? <p>{station.location}</p> : null}
+              {selectedStationId === station.id ? (
+                <p className="text-green-600 font-medium">Selected</p>
+              ) : null}
+            </div>
           </Popup>
         </Marker>
       ))}

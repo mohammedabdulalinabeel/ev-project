@@ -1,39 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
 import dynamic from "next/dynamic";
-import { getDistanceKm } from "@/lib/stations";
-import {
-  chargingStationAddress,
-  chargingStationConnectors,
-  chargingStationDisplayName,
-  type OsmTags,
-} from "@/lib/formatOsmChargingStation";
-
-type Station = {
-  /** OSM `type/id` so node and way id collisions do not break React keys. */
-  id: string;
-  name: string;
-  location: string;
-  chargerType: string;
-  status: string;
-  lat: number;
-  lon: number;
-  distance?: number;
-};
+import { Button } from "@/components/ui/button";
 
 type NominatimHit = {
   lat: string;
@@ -41,117 +15,134 @@ type NominatimHit = {
   display_name?: string;
 };
 
-export default function StationsPage() {
-  const [search, setSearch] = useState("");
-  const [locationSearch, setLocationSearch] = useState("");
+type OpenChargeMapItem = {
+  ID: number;
+  AddressInfo?: {
+    Title?: string;
+    AddressLine1?: string;
+    Town?: string;
+    StateOrProvince?: string;
+    Latitude?: number;
+    Longitude?: number;
+  };
+  OperatorInfo?: { Title?: string };
+  UsageType?: { Title?: string };
+  Connections?: Array<{
+    Quantity?: number;
+    PowerKW?: number;
+    ConnectionType?: { Title?: string };
+    CurrentType?: { Title?: string };
+  }>;
+};
 
-  const [vehicleLat, setVehicleLat] = useState<number | null>(null);
-  const [vehicleLon, setVehicleLon] = useState<number | null>(null);
-  const [resolvedPlaceLabel, setResolvedPlaceLabel] = useState<string | null>(
+type ChargerStation = {
+  id: number;
+  name: string;
+  lat: number;
+  lon: number;
+  location: string;
+  operator: string;
+  usage: string;
+  connectors: string;
+};
+
+export default function StationsPage() {
+  const [locationSearch, setLocationSearch] = useState("Chennai");
+  const [centerLat, setCenterLat] = useState(13.0827);
+  const [centerLon, setCenterLon] = useState(80.2707);
+  const [resolvedPlaceLabel, setResolvedPlaceLabel] =
+    useState<string>("Chennai");
+  const [stations, setStations] = useState<ChargerStation[]>([]);
+  const [selectedStation, setSelectedStation] = useState<ChargerStation | null>(
     null
   );
 
-  const [stations, setStations] = useState<Station[]>([]);
   const [loadingStations, setLoadingStations] = useState(false);
   const [loadingSearch, setLoadingSearch] = useState(false);
-
-  const [geoError, setGeoError] = useState("");
   const [searchError, setSearchError] = useState("");
   const [stationsError, setStationsError] = useState("");
 
   const Map = dynamic(() => import("@/components/Map"), { ssr: false });
 
   useEffect(() => {
-    if (!navigator.geolocation) {
-      setGeoError("Geolocation not supported in your browser.");
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setGeoError("");
-        setVehicleLat(pos.coords.latitude);
-        setVehicleLon(pos.coords.longitude);
-        setResolvedPlaceLabel("Your device location");
-      },
-      () => {
-        setGeoError(
-          "GPS unavailable or denied. Use “Search Location” to pick a place on the map."
-        );
-      }
-    );
-  }, []);
-
-  useEffect(() => {
-    if (vehicleLat === null || vehicleLon === null) return;
-
     const fetchStations = async () => {
       try {
         setLoadingStations(true);
         setStationsError("");
 
-        const res = await fetch("/api/nearbyStations", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ lat: vehicleLat, lon: vehicleLon }),
-        });
-
-        const data = await res.json();
+        const res = await fetch(
+          `/api/chargers?lat=${centerLat}&lon=${centerLon}&distanceKm=25&maxResults=40`
+        );
+        const data = (await res.json()) as
+          | OpenChargeMapItem[]
+          | { error?: string };
 
         if (!res.ok) {
+          const errorPayload = Array.isArray(data) ? {} : data;
           setStations([]);
           setStationsError(
-            typeof data.error === "string"
-              ? data.error
+            typeof errorPayload.error === "string"
+              ? errorPayload.error
               : "Could not load nearby stations."
           );
           return;
         }
 
-        if (!data.elements || data.elements.length === 0) {
+        if (!Array.isArray(data) || data.length === 0) {
           setStations([]);
-          setStationsError(
-            "No EV charging stations found in OpenStreetMap within ~10 km of this point."
-          );
+          setSelectedStation(null);
+          setStationsError("No charging stations found near this location.");
           return;
         }
 
-        const formattedStations: Station[] = data.elements
-          .map(
-            (
-              item: {
-                type?: string;
-                id?: number;
-                lat?: number;
-                lon?: number;
-                center?: { lat?: number; lon?: number };
-                tags?: OsmTags;
-              },
-              index: number
-            ) => {
-              const lat = item.lat ?? item.center?.lat;
-              const lon = item.lon ?? item.center?.lon;
-              if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+        const formattedStations = data
+          .map((item) => {
+            const lat = item.AddressInfo?.Latitude;
+            const lon = item.AddressInfo?.Longitude;
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
 
-              const tags = item.tags;
-              const osmKey = `${item.type ?? "el"}/${item.id ?? index}`;
-              return {
-                id: osmKey,
-                name: chargingStationDisplayName(tags),
-                location: chargingStationAddress(tags),
-                chargerType: chargingStationConnectors(tags),
-                status: "Available",
-                lat: lat as number,
-                lon: lon as number,
-              };
-            }
-          )
-          .filter(Boolean) as Station[];
+            const connections =
+              item.Connections?.slice(0, 4).map((c) => {
+                const base = c.ConnectionType?.Title || "Connector";
+                const power = c.PowerKW ? `${c.PowerKW}kW` : null;
+                const qty = c.Quantity ? `x${c.Quantity}` : null;
+                return [base, power, qty].filter(Boolean).join(" ");
+              }) || [];
+
+            return {
+              id: item.ID,
+              name:
+                item.AddressInfo?.Title ||
+                item.OperatorInfo?.Title ||
+                "EV Charging Station",
+              location: [
+                item.AddressInfo?.AddressLine1,
+                item.AddressInfo?.Town,
+                item.AddressInfo?.StateOrProvince,
+              ]
+                .filter(Boolean)
+                .join(", "),
+              lat: lat as number,
+              lon: lon as number,
+              operator: item.OperatorInfo?.Title || "Unknown operator",
+              usage: item.UsageType?.Title || "Usage info unavailable",
+              connectors:
+                connections.length > 0
+                  ? connections.join(" | ")
+                  : "Connector info unavailable",
+            };
+          })
+          .filter((x): x is ChargerStation => x !== null);
 
         setStations(formattedStations);
+        setSelectedStation((prev) =>
+          prev
+            ? formattedStations.find((s) => s.id === prev.id) || formattedStations[0]
+            : formattedStations[0]
+        );
       } catch {
         setStationsError(
-          "Failed to fetch stations. The map data service may be slow or busy."
+          "Failed to load OpenChargeMap data. Please try again."
         );
       } finally {
         setLoadingStations(false);
@@ -159,12 +150,13 @@ export default function StationsPage() {
     };
 
     fetchStations();
-  }, [vehicleLat, vehicleLon]);
+  }, [centerLat, centerLon]);
 
-  const searchLocation = async () => {
+  const searchLocation = async (e: FormEvent) => {
+    e.preventDefault();
     const q = locationSearch.trim();
     if (!q) {
-      setSearchError("Enter an address or place name to search.");
+      setSearchError("Enter a city or place name.");
       return;
     }
 
@@ -193,9 +185,9 @@ export default function StationsPage() {
         return;
       }
 
-      const hit = data[0];
-      setVehicleLat(Number(hit.lat));
-      setVehicleLon(Number(hit.lon));
+      const hit = data[0] as NominatimHit;
+      setCenterLat(Number(hit.lat));
+      setCenterLon(Number(hit.lon));
       setResolvedPlaceLabel(hit.display_name ?? q);
     } catch {
       setSearchError("Failed to search location.");
@@ -204,31 +196,15 @@ export default function StationsPage() {
     }
   };
 
-  const stationsWithDistance =
-    vehicleLat !== null && vehicleLon !== null
-      ? stations.map((station) => ({
-          ...station,
-          distance: getDistanceKm(
-            vehicleLat,
-            vehicleLon,
-            station.lat,
-            station.lon
-          ),
-        }))
-      : stations;
-
-  const filteredStations = stationsWithDistance.filter((station) =>
-    (station.name + station.location + station.chargerType)
-      .toLowerCase()
-      .includes(search.toLowerCase())
-  );
+  const selectedEmbedUrl = selectedStation
+    ? `https://maps.google.com/maps?q=${selectedStation.lat},${selectedStation.lon}&z=15&output=embed`
+    : "";
 
   return (
     <div>
       <h1 className="text-3xl font-bold">Charging Stations</h1>
       <p className="text-gray-600 mt-2">
-        Search any location and view nearby EV charging points from OpenStreetMap
-        (names and connectors depend on how well the area is mapped).
+        Free architecture: OpenChargeMap data + Nominatim search + Leaflet map.
       </p>
 
       <Card className="mt-6 rounded-2xl shadow-md">
@@ -237,41 +213,25 @@ export default function StationsPage() {
         </CardHeader>
 
         <CardContent className="space-y-3">
-          <Input
-            placeholder="Enter address or place (e.g. Anna Salai, Chennai)"
-            value={locationSearch}
-            onChange={(e) => setLocationSearch(e.target.value)}
-          />
+          <form onSubmit={searchLocation} className="flex gap-2">
+            <Input
+              placeholder="Type a city (e.g. Chennai, Coimbatore)"
+              value={locationSearch}
+              onChange={(e) => setLocationSearch(e.target.value)}
+            />
+            <Button type="submit" disabled={loadingSearch}>
+              {loadingSearch ? "Searching..." : "Search"}
+            </Button>
+          </form>
 
-          <button
-            type="button"
-            onClick={searchLocation}
-            disabled={loadingSearch}
-            className="bg-green-600 text-white px-4 py-2 rounded-lg disabled:opacity-60"
-          >
-            {loadingSearch ? "Searching…" : "Search nearby stations"}
-          </button>
-
-          {vehicleLat !== null && vehicleLon !== null && (
-            <div className="text-gray-700 text-sm space-y-1">
-              <p>
-                <b>Map center:</b> {vehicleLat.toFixed(4)}, {vehicleLon.toFixed(4)}
-              </p>
-              {resolvedPlaceLabel && (
-                <p className="text-slate-600">
-                  <b>Place:</b> {resolvedPlaceLabel}
-                </p>
-              )}
-            </div>
-          )}
-
-          {geoError && (
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertTitle>Location</AlertTitle>
-              <AlertDescription>{geoError}</AlertDescription>
-            </Alert>
-          )}
+          <div className="text-gray-700 text-sm space-y-1">
+            <p>
+              <b>Map center:</b> {centerLat.toFixed(4)}, {centerLon.toFixed(4)}
+            </p>
+            <p className="text-slate-600">
+              <b>Place:</b> {resolvedPlaceLabel}
+            </p>
+          </div>
 
           {searchError && (
             <Alert variant="destructive">
@@ -291,67 +251,9 @@ export default function StationsPage() {
 
           {loadingStations && (
             <p className="text-blue-600 font-medium">
-              Loading nearby charging stations…
+              Loading stations from OpenChargeMap...
             </p>
           )}
-        </CardContent>
-      </Card>
-
-      <div className="mt-6 max-w-md">
-        <Input
-          placeholder="Filter table by name, area, or connector…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
-
-      <Card className="mt-6 rounded-2xl shadow-md">
-        <CardHeader>
-          <CardTitle>Nearby stations (OpenStreetMap)</CardTitle>
-        </CardHeader>
-
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Area / address (OSM)</TableHead>
-                <TableHead>Connectors (OSM)</TableHead>
-                <TableHead>Distance (km)</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-
-            <TableBody>
-              {filteredStations.length > 0 ? (
-                filteredStations.map((station) => (
-                  <TableRow key={station.id}>
-                    <TableCell className="font-medium max-w-[200px]">
-                      {station.name}
-                    </TableCell>
-                    <TableCell className="max-w-[240px] text-sm text-slate-700">
-                      {station.location}
-                    </TableCell>
-                    <TableCell className="max-w-[220px] text-sm">
-                      {station.chargerType}
-                    </TableCell>
-                    <TableCell>
-                      {station.distance?.toFixed(2) ?? "—"}
-                    </TableCell>
-                    <TableCell>
-                      <Badge className="bg-green-600">Mapped</Badge>
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-gray-500">
-                    No rows match your filter, or no data loaded yet.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
         </CardContent>
       </Card>
 
@@ -361,10 +263,62 @@ export default function StationsPage() {
         </CardHeader>
         <CardContent>
           <Map
-            vehicleLat={vehicleLat}
-            vehicleLon={vehicleLon}
-            filteredStations={filteredStations}
+            centerLat={centerLat}
+            centerLon={centerLon}
+            stations={stations}
+            selectedStationId={selectedStation?.id}
+            onStationSelect={(station) => {
+              const picked = stations.find((s) => s.id === station.id) || null;
+              setSelectedStation(picked);
+            }}
           />
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6 rounded-2xl shadow-md">
+        <CardHeader>
+          <CardTitle>Station Details</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {selectedStation ? (
+            <>
+              <div className="space-y-1">
+                <p className="text-lg font-semibold">{selectedStation.name}</p>
+                <p className="text-sm text-slate-600">
+                  {selectedStation.location || "Address unavailable"}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <Badge variant="secondary">{selectedStation.operator}</Badge>
+                <Badge variant="outline">{selectedStation.usage}</Badge>
+              </div>
+              <p className="text-sm">{selectedStation.connectors}</p>
+
+              {selectedEmbedUrl ? (
+                <iframe
+                  title="Station location in Google Maps"
+                  src={selectedEmbedUrl}
+                  className="w-full h-64 rounded-lg border"
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                />
+              ) : null}
+
+              <Button asChild>
+                <a
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${selectedStation.lat},${selectedStation.lon}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Get Directions
+                </a>
+              </Button>
+            </>
+          ) : (
+            <p className="text-slate-600">
+              Click any station marker to view station details.
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>
