@@ -12,6 +12,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertCircle } from "lucide-react";
 import dynamic from "next/dynamic";
 
 type Station = {
@@ -163,8 +165,14 @@ export default function StationsPage() {
               <b>Current Location:</b> {vehicleLat.toFixed(4)},{" "}
               {vehicleLon.toFixed(4)}
             </p>
+          ) : error ? (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           ) : (
-            <p className="text-red-600">{error || "Detecting location..."}</p>
+            <p className="text-gray-500">Detecting location...</p>
           )}
 
           {/* Battery input */}

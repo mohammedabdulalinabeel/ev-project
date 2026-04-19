@@ -9,7 +9,7 @@ export default function Dashboard() {
         Monitor EV battery, range, and charging status.
       </p>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
         <Card className="rounded-2xl shadow-md">
           <CardHeader>
             <CardTitle>Battery Level</CardTitle>
@@ -46,11 +46,14 @@ export default function Dashboard() {
       </div>
 
       <div className="mt-10">
-        <h3 className="text-2xl font-semibold">Recent Trips</h3>
-
-        <div className="mt-4 bg-white rounded-2xl shadow-md p-5">
-          <p className="text-gray-500">No trips recorded yet.</p>
-        </div>
+        <Card className="rounded-2xl shadow-md">
+          <CardHeader>
+            <CardTitle>Recent Trips</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-gray-500">No trips recorded yet.</p>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

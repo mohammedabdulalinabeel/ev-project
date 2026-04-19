@@ -6,7 +6,8 @@ import dynamic from "next/dynamic";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { MapPin } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertCircle, MapPin } from "lucide-react";
 
 const RouteMap = dynamic(() => import("@/components/RouteMap"), { ssr: false });
 
@@ -216,7 +217,13 @@ export default function RoutePlannerPage() {
             <p>Estimated Range: <span className="font-semibold text-green-600">{remainingRange.toFixed(1)} km</span></p>
           </div>
 
-          {error && <p className="text-red-600">{error}</p>}
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
           {isLoading && <p className="text-blue-600">Finding route...</p>}
 
           {distanceKm && (
