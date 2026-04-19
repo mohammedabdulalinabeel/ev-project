@@ -3,9 +3,18 @@ import { NextResponse } from "next/server";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { start, destination } = body;
+    const start = typeof body?.start === "string" ? body.start.trim() : "";
+    const destination =
+      typeof body?.destination === "string" ? body.destination.trim() : "";
 
-    const ORS_API_KEY = process.env.ORS_API_KEY || process.env.NEXT_PUBLIC_ORS_API_KEY;
+    if (!start || !destination) {
+      return NextResponse.json(
+        { error: "Both start and destination are required as non-empty strings." },
+        { status: 400 }
+      );
+    }
+
+    const ORS_API_KEY = process.env.ORS_API_KEY;
     if (!ORS_API_KEY) {
       return NextResponse.json(
         { error: "ORS API key is not configured." },
@@ -88,10 +97,9 @@ export async function POST(req: Request) {
       startCoords,
       destCoords,
     });
-  } catch (error: any) {
-    return NextResponse.json(
-      { error: error.message || "Failed to fetch route" },
-      { status: 500 }
-    );
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : "Failed to fetch route";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

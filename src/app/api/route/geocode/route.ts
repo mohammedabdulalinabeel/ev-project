@@ -12,7 +12,7 @@ export async function GET(req: Request) {
       );
     }
 
-    const ORS_API_KEY = process.env.ORS_API_KEY || process.env.NEXT_PUBLIC_ORS_API_KEY;
+    const ORS_API_KEY = process.env.ORS_API_KEY;
     if (!ORS_API_KEY) {
       return NextResponse.json(
         { error: "ORS API key is not configured." },
@@ -40,17 +40,26 @@ export async function GET(req: Request) {
       );
     }
 
-    const suggestions = (data.features || []).map((feature: any) => ({
-      label: feature.properties.label || feature.properties.name || query,
-      lat: feature.geometry.coordinates[1],
-      lon: feature.geometry.coordinates[0],
-    }));
+    type OrsFeature = {
+      geometry: { coordinates: [number, number] };
+      properties: { label?: string; name?: string };
+    };
+
+    const suggestions = ((data.features || []) as OrsFeature[]).map(
+      (feature) => ({
+        label:
+          feature.properties.label || feature.properties.name || query,
+        lat: feature.geometry.coordinates[1],
+        lon: feature.geometry.coordinates[0],
+      })
+    );
 
     return NextResponse.json({ suggestions });
-  } catch (error: any) {
-    return NextResponse.json(
-      { error: error.message || "Failed to fetch geocoding suggestions." },
-      { status: 500 }
-    );
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to fetch geocoding suggestions.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

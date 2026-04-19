@@ -11,6 +11,7 @@ import {
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
+import type { Station } from "@/lib/stations";
 
 // Fix Leaflet marker icon issue in Next.js
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -31,15 +32,8 @@ interface RouteMapProps {
   resolvedStart: string;
   resolvedDest: string;
   routeCoords: [number, number][];
-  reachableStations?: Array<{
-    id: number;
-    name: string;
-    lat: number;
-    lon: number;
-    status: string;
-    chargerType: string;
-  }>;
-  onRouteToStation?: (station: any) => void;
+  reachableStations?: Station[];
+  onRouteToStation?: (station: Station) => void;
 }
 
 // Auto fit route bounds component

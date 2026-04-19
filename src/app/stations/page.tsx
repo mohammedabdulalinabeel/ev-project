@@ -15,72 +15,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
 import dynamic from "next/dynamic";
-
-type Station = {
-  id: number;
-  name: string;
-  location: string;
-  chargerType: string;
-  status: string;
-  lat: number;
-  lon: number;
-};
-
-const stations: Station[] = [
-  {
-    id: 1,
-    name: "EV Station - T Nagar",
-    location: "Chennai",
-    chargerType: "Fast Charger",
-    status: "Available",
-    lat: 13.0418,
-    lon: 80.2341,
-  },
-  {
-    id: 2,
-    name: "EV Station - Velachery",
-    location: "Chennai",
-    chargerType: "Normal Charger",
-    status: "Busy",
-    lat: 12.9756,
-    lon: 80.2209,
-  },
-  {
-    id: 3,
-    name: "EV Station - Anna Nagar",
-    location: "Chennai",
-    chargerType: "Fast Charger",
-    status: "Offline",
-    lat: 13.0878,
-    lon: 80.2102,
-  },
-  {
-    id: 4,
-    name: "EV Station - Guindy",
-    location: "Chennai",
-    chargerType: "Fast Charger",
-    status: "Available",
-    lat: 13.0067,
-    lon: 80.2206,
-  },
-];
-
-// Haversine formula distance calculation (KM)
-function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371; // Earth radius in KM
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
+import {
+  EV_FULL_RANGE_KM,
+  getDistanceKm,
+  MOCK_STATIONS,
+} from "@/lib/stations";
 
 export default function StationsPage() {
   const [search, setSearch] = useState("");
@@ -91,11 +30,7 @@ export default function StationsPage() {
 
   const Map = dynamic(() => import("@/components/Map"), { ssr: false });
 
-  // Assume full range of EV when battery is 100%
-  const FULL_RANGE_KM = 300;
-
-  // Remaining range based on battery %
-  const remainingRange = (battery / 100) * FULL_RANGE_KM;
+  const remainingRange = (battery / 100) * EV_FULL_RANGE_KM;
 
   // Get Live Location
   useEffect(() => {
@@ -118,8 +53,7 @@ export default function StationsPage() {
   // Filter reachable stations
   const reachableStations =
     vehicleLat && vehicleLon
-      ? stations
-          .map((station) => {
+      ? MOCK_STATIONS.map((station) => {
             const distance = getDistanceKm(
               vehicleLat,
               vehicleLon,

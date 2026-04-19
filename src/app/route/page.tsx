@@ -1,89 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import axios from "axios";
 import dynamic from "next/dynamic";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, MapPin } from "lucide-react";
+import { AlertCircle } from "lucide-react";
+import {
+  EV_FULL_RANGE_KM,
+  getDistanceKm,
+  getMinDistanceToRoute,
+  MOCK_STATIONS,
+  type Station,
+} from "@/lib/stations";
 
 const RouteMap = dynamic(() => import("@/components/RouteMap"), { ssr: false });
-
-type Station = {
-  id: number;
-  name: string;
-  location: string;
-  chargerType: string;
-  status: string;
-  lat: number;
-  lon: number;
-};
-
-const stations: Station[] = [
-  {
-    id: 1,
-    name: "EV Station - T Nagar",
-    location: "Chennai",
-    chargerType: "Fast Charger",
-    status: "Available",
-    lat: 13.0418,
-    lon: 80.2341,
-  },
-  {
-    id: 2,
-    name: "EV Station - Velachery",
-    location: "Chennai",
-    chargerType: "Normal Charger",
-    status: "Busy",
-    lat: 12.9756,
-    lon: 80.2209,
-  },
-  {
-    id: 3,
-    name: "EV Station - Anna Nagar",
-    location: "Chennai",
-    chargerType: "Fast Charger",
-    status: "Offline",
-    lat: 13.0878,
-    lon: 80.2102,
-  },
-  {
-    id: 4,
-    name: "EV Station - Guindy",
-    location: "Chennai",
-    chargerType: "Fast Charger",
-    status: "Available",
-    lat: 13.0067,
-    lon: 80.2206,
-  },
-];
-
-function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
-
-function getMinDistanceToRoute(stationLat: number, stationLon: number, routeCoords: [number, number][]) {
-  if (routeCoords.length === 0) return Infinity;
-  let minDistance = Infinity;
-  for (const [lat, lon] of routeCoords) {
-    const dist = getDistanceKm(stationLat, stationLon, lat, lon);
-    if (dist < minDistance) minDistance = dist;
-  }
-  return minDistance;
-}
-
-interface Suggestion {
-  label: string;
-  lat: number;
-  lon: number;
-}
 
 interface RouteStep {
   instruction: string;
@@ -110,14 +41,25 @@ export default function RoutePlannerPage() {
   const [isLoading, setIsLoading] = useState(false);
 
   const [battery, setBattery] = useState(60);
-  const FULL_RANGE_KM = 300;
-  const remainingRange = (battery / 100) * FULL_RANGE_KM;
+  const remainingRange = (battery / 100) * EV_FULL_RANGE_KM;
 
   const reachableStations =
     routeCoords.length > 0
-      ? stations.filter((station) => getMinDistanceToRoute(station.lat, station.lon, routeCoords) <= remainingRange)
+      ? MOCK_STATIONS.filter(
+          (station) =>
+            getMinDistanceToRoute(station.lat, station.lon, routeCoords) <=
+            remainingRange
+        )
       : vehicleLat && vehicleLon
-      ? stations.filter((station) => getDistanceKm(vehicleLat, vehicleLon, station.lat, station.lon) <= remainingRange)
+      ? MOCK_STATIONS.filter(
+          (station) =>
+            getDistanceKm(
+              vehicleLat,
+              vehicleLon,
+              station.lat,
+              station.lon
+            ) <= remainingRange
+        )
       : [];
 
   useEffect(() => {
@@ -142,16 +84,56 @@ export default function RoutePlannerPage() {
       setError("");
       setIsLoading(true);
 
-      const response = await axios.post("/api/route/ors", {
-        start: `${vehicleLat}, ${vehicleLon}`,
-        destination: `${station.lat}, ${station.lon}`,
+      const response = await fetch("/api/route/ors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          start: `${vehicleLat}, ${vehicleLon}`,
+          destination: `${station.lat}, ${station.lon}`,
+        }),
       });
 
-      const coords = response.data.features[0].geometry.coordinates;
-      const formattedCoords = coords.map((c: number[]) => [c[1], c[0]]);
+      const payload = (await response.json()) as {
+        error?: string;
+        features?: Array<{
+          geometry: { coordinates: number[][] };
+          properties: {
+            summary: { distance: number; duration: number };
+            segments?: Array<{
+              steps?: Array<{
+                instruction: string;
+                distance: number;
+                duration: number;
+              }>;
+            }>;
+          };
+        }>;
+        startCoords?: { lat: number; lon: number };
+        destCoords?: { lat: number; lon: number };
+      };
 
-      const distMeters = response.data.features[0].properties.summary.distance;
-      const durationSec = response.data.features[0].properties.summary.duration;
+      if (!response.ok) {
+        setError(
+          typeof payload.error === "string"
+            ? payload.error
+            : "Route fetch failed. Try again."
+        );
+        return;
+      }
+
+      const feature = payload.features?.[0];
+      if (!feature) {
+        setError("No route data returned.");
+        return;
+      }
+
+      const coords = feature.geometry.coordinates;
+      const formattedCoords: [number, number][] = coords.map(
+        (c) => [c[1], c[0]] as [number, number]
+      );
+
+      const distMeters = feature.properties.summary.distance;
+      const durationSec = feature.properties.summary.duration;
 
       setRouteCoords(formattedCoords);
       setDistanceKm(distMeters / 1000);
@@ -159,29 +141,30 @@ export default function RoutePlannerPage() {
 
       setResolvedDest(station.name);
 
-      // steps
       const routeSteps =
-        response.data.features[0].properties.segments?.[0]?.steps || [];
+        feature.properties.segments?.[0]?.steps ?? [];
 
       setSteps(
-        routeSteps.map((s: any) => ({
+        routeSteps.map((s) => ({
           instruction: s.instruction,
           distance: s.distance,
           duration: s.duration,
         }))
       );
 
-      if (response.data.startCoords) {
-        setVehicleLat(response.data.startCoords.lat);
-        setVehicleLon(response.data.startCoords.lon);
+      if (payload.startCoords) {
+        setVehicleLat(payload.startCoords.lat);
+        setVehicleLon(payload.startCoords.lon);
       }
 
-      if (response.data.destCoords) {
-        setDestLat(response.data.destCoords.lat);
-        setDestLon(response.data.destCoords.lon);
+      if (payload.destCoords) {
+        setDestLat(payload.destCoords.lat);
+        setDestLon(payload.destCoords.lon);
       }
-    } catch (err: any) {
-      setError(err.response?.data?.error || "Route fetch failed. Try again.");
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : "Route fetch failed. Try again."
+      );
     } finally {
       setIsLoading(false);
     }

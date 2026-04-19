@@ -1,36 +1,59 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# EV-CSMS
 
-## Getting Started
+Electric Vehicle Charging Station Management System — a [Next.js](https://nextjs.org) app for monitoring EV status, finding charging stations, and planning routes with maps.
 
-First, run the development server:
+## Prerequisites
+
+- Node.js 20+ recommended
+- An [OpenRouteService](https://openrouteservice.org/) API key (used for geocoding and driving directions on the server)
+
+## Setup
+
+1. Clone the repository and install dependencies:
+
+```bash
+npm install
+```
+
+2. Copy the environment template and add your key:
+
+```bash
+copy .env.example .env
+```
+
+On macOS or Linux, use `cp .env.example .env` instead.
+
+Edit `.env` and set `ORS_API_KEY` to your key. **Do not** prefix this variable with `NEXT_PUBLIC_`; the key must stay server-side only.
+
+3. Start the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Command       | Description              |
+| ------------- | ------------------------ |
+| `npm run dev` | Development server       |
+| `npm run build` | Production build       |
+| `npm run start` | Run production server  |
+| `npm run lint`  | ESLint                 |
 
-## Learn More
+## API routes (App Router)
 
-To learn more about Next.js, take a look at the following resources:
+| Path | Method | Description |
+| ---- | ------ | ----------- |
+| `/api/route/ors` | POST | Body: `{ start, destination }` — resolves route via OpenRouteService |
+| `/api/route/geocode` | GET | Query: `query` — autocomplete-style geocode suggestions |
+| `/api/route/nearbyStations` | GET | Query: `lat`, `lon`, optional `radiusKm` (default 50) — demo stations within radius |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Tech stack
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Next.js (App Router), React, TypeScript, Tailwind CSS, shadcn-style UI components, Leaflet / react-leaflet for maps.
 
-## Deploy on Vercel
+## Deploy
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Build with `npm run build`, then run `npm run start`, or deploy to a platform that supports Next.js (e.g. Vercel). Configure `ORS_API_KEY` in the host’s environment variables — never commit `.env`.
