@@ -15,17 +15,28 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
 import dynamic from "next/dynamic";
-import {
-  EV_FULL_RANGE_KM,
-  getDistanceKm,
-  MOCK_STATIONS,
-} from "@/lib/stations";
+import { EV_FULL_RANGE_KM, getDistanceKm } from "@/lib/stations";
+
+type Station = {
+  id: number;
+  name: string;
+  location: string;
+  chargerType: string;
+  status: string;
+  lat: number;
+  lon: number;
+  distance?: number;
+};
 
 export default function StationsPage() {
   const [search, setSearch] = useState("");
   const [battery, setBattery] = useState(60);
   const [vehicleLat, setVehicleLat] = useState<number | null>(null);
   const [vehicleLon, setVehicleLon] = useState<number | null>(null);
+
+  const [stations, setStations] = useState<Station[]>([]);
+  const [loading, setLoading] = useState(false);
+
   const [error, setError] = useState("");
 
   const Map = dynamic(() => import("@/components/Map"), { ssr: false });
@@ -50,10 +61,64 @@ export default function StationsPage() {
     );
   }, []);
 
-  // Filter reachable stations
+  // Fetch Live Nearby Stations from Overpass API
+  useEffect(() => {
+    if (!vehicleLat || !vehicleLon) return;
+
+    const fetchStations = async () => {
+      try {
+        setLoading(true);
+        setError("");
+
+        const res = await fetch("/api/nearbyStations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lat: vehicleLat, lon: vehicleLon }),
+        });
+
+        const data = await res.json();
+
+        if (!data.elements || data.elements.length === 0) {
+          setStations([]);
+          setError("No EV charging stations found nearby.");
+          return;
+        }
+
+        const formattedStations: Station[] = data.elements
+          .map((item: any, index: number) => {
+            const lat = item.lat || item.center?.lat;
+            const lon = item.lon || item.center?.lon;
+
+            if (!lat || !lon) return null;
+
+            return {
+              id: item.id || index,
+              name: item.tags?.name || "Unnamed Charging Station",
+              location: item.tags?.["addr:city"] || "Nearby Area",
+              chargerType: item.tags?.socket || "Unknown",
+              status: "Available",
+              lat,
+              lon,
+            };
+          })
+          .filter(Boolean);
+
+        setStations(formattedStations);
+      } catch (err) {
+        setError("Overpass API is slow. Please refresh and try again.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStations();
+  }, [vehicleLat, vehicleLon]);
+
+  // Filter reachable stations based on battery range
   const reachableStations =
     vehicleLat && vehicleLon
-      ? MOCK_STATIONS.map((station) => {
+      ? stations
+          .map((station) => {
             const distance = getDistanceKm(
               vehicleLat,
               vehicleLon,
@@ -62,7 +127,7 @@ export default function StationsPage() {
             );
             return { ...station, distance };
           })
-          .filter((station) => station.distance <= remainingRange)
+          .filter((station) => station.distance! <= remainingRange)
       : [];
 
   // Search filtering
@@ -76,7 +141,7 @@ export default function StationsPage() {
     <div>
       <h1 className="text-3xl font-bold">Charging Stations</h1>
       <p className="text-gray-600 mt-2">
-        Automatically showing reachable stations based on battery and location.
+        Showing live nearby stations using OpenStreetMap (Overpass API).
       </p>
 
       {/* Vehicle Info */}
@@ -135,6 +200,13 @@ export default function StationsPage() {
         />
       </div>
 
+      {/* Loading */}
+      {loading && (
+        <p className="mt-4 text-blue-600 font-medium">
+          Loading nearby EV charging stations...
+        </p>
+      )}
+
       {/* Stations Table */}
       <Card className="mt-6 rounded-2xl shadow-md">
         <CardHeader>
@@ -162,17 +234,9 @@ export default function StationsPage() {
                     </TableCell>
                     <TableCell>{station.location}</TableCell>
                     <TableCell>{station.chargerType}</TableCell>
-                    <TableCell>{station.distance.toFixed(2)} km</TableCell>
+                    <TableCell>{station.distance?.toFixed(2)} km</TableCell>
                     <TableCell>
-                      {station.status === "Available" && (
-                        <Badge className="bg-green-600">Available</Badge>
-                      )}
-                      {station.status === "Busy" && (
-                        <Badge className="bg-orange-600">Busy</Badge>
-                      )}
-                      {station.status === "Offline" && (
-                        <Badge className="bg-red-600">Offline</Badge>
-                      )}
+                      <Badge className="bg-green-600">Available</Badge>
                     </TableCell>
                   </TableRow>
                 ))
@@ -194,7 +258,11 @@ export default function StationsPage() {
           <CardTitle>Station Map</CardTitle>
         </CardHeader>
         <CardContent>
-          <Map vehicleLat={vehicleLat} vehicleLon={vehicleLon} filteredStations={filteredStations} />
+          <Map
+            vehicleLat={vehicleLat}
+            vehicleLon={vehicleLon}
+            filteredStations={filteredStations}
+          />
         </CardContent>
       </Card>
     </div>
