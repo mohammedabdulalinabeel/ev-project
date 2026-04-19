@@ -84,7 +84,7 @@ export default function RoutePlannerPage() {
       setError("");
       setIsLoading(true);
 
-      const response = await fetch("/api/route/ors", {
+      const response = await fetch("/api/ors", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

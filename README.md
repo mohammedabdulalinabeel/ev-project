@@ -46,9 +46,10 @@ Open [http://localhost:3000](http://localhost:3000).
 
 | Path | Method | Description |
 | ---- | ------ | ----------- |
-| `/api/route/ors` | POST | Body: `{ start, destination }` — resolves route via OpenRouteService |
-| `/api/route/geocode` | GET | Query: `query` — autocomplete-style geocode suggestions |
-| `/api/route/nearbyStations` | GET | Query: `lat`, `lon`, optional `radiusKm` (default 50) — demo stations within radius |
+| `/api/ors` | POST | Body: `{ start, destination }` — driving route via OpenRouteService |
+| `/api/geocode` | GET | Query: `query` — geocode suggestions (requires `ORS_API_KEY`) |
+| `/api/nearbyStations` | `GET` or `POST` | `lat`, `lon` (query string or JSON body) — nearby charging stations via Overpass |
+| `/api/nominatim` | GET | Query: `q` — forward geocode (used by the Stations page; set `NOMINATIM_USER_AGENT` in production) |
 
 ## Tech stack
 
