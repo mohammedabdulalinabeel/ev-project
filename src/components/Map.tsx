@@ -27,34 +27,48 @@ interface MapProps {
   onStationSelect?: (station: ChargerMapMarker) => void;
 }
 
-// Search center icon (Blue)
+// Search center icon (Red Pin)
 const userIcon = new L.Icon({
-  iconUrl: "https://cdn-icons-png.flaticon.com/512/684/684908.png",
-  iconSize: [40, 40],
-  iconAnchor: [20, 40],
+  iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
+  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
 });
 
-// Charging station icon (Green EV)
+// Charging station icon (Location Pin)
 const stationIcon = new L.Icon({
-  iconUrl: "https://cdn-icons-png.flaticon.com/512/1048/1048314.png",
-  iconSize: [40, 40],
-  iconAnchor: [20, 40],
+  iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
+  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
 });
 
-function FlyToCenter({
-  lat,
-  lon,
-  zoom = 13,
+function FitMapBounds({
+  centerLat,
+  centerLon,
+  stations,
 }: {
-  lat: number;
-  lon: number;
-  zoom?: number;
+  centerLat: number;
+  centerLon: number;
+  stations: ChargerMapMarker[];
 }) {
   const map = useMap();
 
   useEffect(() => {
-    map.flyTo([lat, lon], zoom, { duration: 0.8 });
-  }, [map, lat, lon, zoom]);
+    if (stations.length === 0) {
+      map.flyTo([centerLat, centerLon], 13, { duration: 0.8 });
+      return;
+    }
+
+    const bounds = L.latLngBounds([
+      [centerLat, centerLon],
+      ...stations.map((s) => [s.lat, s.lon] as [number, number]),
+    ]);
+
+    map.flyToBounds(bounds, { padding: [50, 50], duration: 0.8 });
+  }, [map, centerLat, centerLon, stations]);
 
   return null;
 }
@@ -72,14 +86,14 @@ export default function Map({
     <MapContainer
       center={center}
       zoom={13}
-      style={{ height: "400px", width: "100%", borderRadius: "16px" }}
+      style={{ height: "400px", width: "100%", borderRadius: "16px", zIndex: 0 }}
     >
       <TileLayer
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         attribution='&copy; OpenStreetMap contributors'
       />
 
-      <FlyToCenter lat={centerLat} lon={centerLon} />
+      <FitMapBounds centerLat={centerLat} centerLon={centerLon} stations={stations} />
 
       <Marker position={[centerLat, centerLon]} icon={userIcon}>
         <Popup>

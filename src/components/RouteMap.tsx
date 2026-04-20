@@ -84,6 +84,7 @@ export default function RouteMap({
         height: "450px",
         width: "100%",
         borderRadius: "16px",
+        zIndex: 0,
       }}
     >
       <TileLayer

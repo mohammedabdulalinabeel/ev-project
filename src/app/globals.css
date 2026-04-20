@@ -128,3 +128,13 @@
     @apply font-sans;
   }
 }
+
+/* Fix overlapping Leaflet map overlapping the Shadcn Sheet */
+.leaflet-container {
+  z-index: 0 !important;
+}
+
+/* Fix Tailwind global img reset breaking Leaflet tiles */
+.leaflet-container img {
+  max-width: none !important;
+}
