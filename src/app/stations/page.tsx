@@ -1,13 +1,22 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
+import { AlertCircle, MapPin } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle } from "lucide-react";
-import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type NominatimHit = {
   lat: string;
@@ -44,6 +53,8 @@ type ChargerStation = {
   operator: string;
   usage: string;
   connectors: string;
+  powerLabel: string;
+  maxPowerKw: number;
 };
 
 export default function StationsPage() {
@@ -61,6 +72,7 @@ export default function StationsPage() {
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [stationsError, setStationsError] = useState("");
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
   const Map = dynamic(() => import("@/components/Map"), { ssr: false });
 
@@ -109,6 +121,17 @@ export default function StationsPage() {
                 return [base, power, qty].filter(Boolean).join(" ");
               }) || [];
 
+            const maxPowerKw = Math.max(
+              ...(item.Connections?.map((c) => c.PowerKW || 0) || [0])
+            );
+            const hasDC = item.Connections?.some((c) =>
+              (c.CurrentType?.Title || "").toLowerCase().includes("dc")
+            );
+            const powerLabel =
+              maxPowerKw > 0
+                ? `${Math.round(maxPowerKw)}kW ${hasDC ? "DC" : "AC"}`
+                : "Unknown Output";
+
             return {
               id: item.ID,
               name:
@@ -130,6 +153,8 @@ export default function StationsPage() {
                 connections.length > 0
                   ? connections.join(" | ")
                   : "Connector info unavailable",
+              powerLabel,
+              maxPowerKw,
             };
           })
           .filter((x): x is ChargerStation => x !== null);
@@ -140,6 +165,7 @@ export default function StationsPage() {
             ? formattedStations.find((s) => s.id === prev.id) || formattedStations[0]
             : formattedStations[0]
         );
+        setIsDetailsOpen((prev) => prev && formattedStations.length > 0);
       } catch {
         setStationsError(
           "Failed to load OpenChargeMap data. Please try again."
@@ -200,14 +226,23 @@ export default function StationsPage() {
     ? `https://maps.google.com/maps?q=${selectedStation.lat},${selectedStation.lon}&z=15&output=embed`
     : "";
 
+  const sortedStations = useMemo(
+    () =>
+      [...stations].sort((a, b) => {
+        if (b.maxPowerKw !== a.maxPowerKw) return b.maxPowerKw - a.maxPowerKw;
+        return a.name.localeCompare(b.name);
+      }),
+    [stations]
+  );
+
   return (
-    <div>
-      <h1 className="text-3xl font-bold">Charging Stations</h1>
-      <p className="text-gray-600 mt-2">
+    <div className="min-h-[calc(100vh-3rem)] rounded-2xl bg-slate-950 text-slate-100 p-4 md:p-6">
+      <h1 className="text-3xl font-bold tracking-tight">Charging Stations</h1>
+      <p className="text-slate-300 mt-2">
         Free architecture: OpenChargeMap data + Nominatim search + Leaflet map.
       </p>
 
-      <Card className="mt-6 rounded-2xl shadow-md">
+      <Card className="mt-6 border-slate-700/60 bg-slate-900/50 backdrop-blur-md">
         <CardHeader>
           <CardTitle>Search Location</CardTitle>
         </CardHeader>
@@ -218,17 +253,18 @@ export default function StationsPage() {
               placeholder="Type a city (e.g. Chennai, Coimbatore)"
               value={locationSearch}
               onChange={(e) => setLocationSearch(e.target.value)}
+              className="border-slate-700 bg-slate-950/70"
             />
             <Button type="submit" disabled={loadingSearch}>
               {loadingSearch ? "Searching..." : "Search"}
             </Button>
           </form>
 
-          <div className="text-gray-700 text-sm space-y-1">
+          <div className="text-slate-200 text-sm space-y-1">
             <p>
               <b>Map center:</b> {centerLat.toFixed(4)}, {centerLon.toFixed(4)}
             </p>
-            <p className="text-slate-600">
+            <p className="text-slate-400">
               <b>Place:</b> {resolvedPlaceLabel}
             </p>
           </div>
@@ -250,77 +286,165 @@ export default function StationsPage() {
           )}
 
           {loadingStations && (
-            <p className="text-blue-600 font-medium">
+            <p className="text-cyan-400 font-medium">
               Loading stations from OpenChargeMap...
             </p>
           )}
         </CardContent>
       </Card>
 
-      <Card className="mt-6 rounded-2xl shadow-md">
-        <CardHeader>
-          <CardTitle>Station map</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Map
-            centerLat={centerLat}
-            centerLon={centerLon}
-            stations={stations}
-            selectedStationId={selectedStation?.id}
-            onStationSelect={(station) => {
-              const picked = stations.find((s) => s.id === station.id) || null;
-              setSelectedStation(picked);
-            }}
-          />
-        </CardContent>
-      </Card>
+      <div className="mt-6 grid gap-4 lg:grid-cols-5">
+        <Card className="lg:col-span-2 border-slate-700/60 bg-slate-900/50 backdrop-blur-md">
+          <CardHeader>
+            <CardTitle>Stations ({sortedStations.length})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-[60vh] pr-3">
+              <div className="space-y-3">
+                {sortedStations.map((station) => {
+                  const isSelected = selectedStation?.id === station.id;
+                  return (
+                    <button
+                      key={station.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedStation(station);
+                        setIsDetailsOpen(true);
+                      }}
+                      className="w-full text-left"
+                    >
+                      <Card
+                        className={`border transition-colors ${
+                          isSelected
+                            ? "border-cyan-400/70 bg-slate-800/80"
+                            : "border-slate-700/60 bg-slate-900/70 hover:bg-slate-800/70"
+                        } backdrop-blur-sm`}
+                      >
+                        <CardContent className="p-4 space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="font-semibold text-slate-50">
+                              {station.name}
+                            </p>
+                            <Badge className="bg-cyan-600 text-cyan-50">
+                              {station.powerLabel}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-slate-300">
+                            {station.location || "Address unavailable"}
+                          </p>
+                          <p className="text-xs text-slate-400 line-clamp-2">
+                            {station.connectors}
+                          </p>
+                        </CardContent>
+                      </Card>
+                    </button>
+                  );
+                })}
+                {sortedStations.length === 0 && !loadingStations ? (
+                  <p className="text-sm text-slate-400">
+                    No stations to show for this area.
+                  </p>
+                ) : null}
+              </div>
+            </ScrollArea>
+          </CardContent>
+        </Card>
 
-      <Card className="mt-6 rounded-2xl shadow-md">
-        <CardHeader>
-          <CardTitle>Station Details</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
+        <Card className="lg:col-span-3 border-slate-700/60 bg-slate-900/50 backdrop-blur-md">
+          <CardHeader>
+            <CardTitle>Map View</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Map
+              centerLat={centerLat}
+              centerLon={centerLon}
+              stations={sortedStations}
+              selectedStationId={selectedStation?.id}
+              onStationSelect={(station) => {
+                const picked =
+                  sortedStations.find((s) => s.id === station.id) || null;
+                setSelectedStation(picked);
+                setIsDetailsOpen(Boolean(picked));
+              }}
+            />
+          </CardContent>
+        </Card>
+      </div>
+
+      <Sheet open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
+        <SheetContent
+          side="right"
+          className="w-[92vw] sm:max-w-xl border-slate-700 bg-slate-950/95 text-slate-100 backdrop-blur-lg"
+        >
           {selectedStation ? (
             <>
-              <div className="space-y-1">
-                <p className="text-lg font-semibold">{selectedStation.name}</p>
-                <p className="text-sm text-slate-600">
+              <SheetHeader>
+                <SheetTitle className="text-xl">{selectedStation.name}</SheetTitle>
+                <SheetDescription className="text-slate-300">
                   {selectedStation.location || "Address unavailable"}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2 text-xs">
-                <Badge variant="secondary">{selectedStation.operator}</Badge>
-                <Badge variant="outline">{selectedStation.usage}</Badge>
-              </div>
-              <p className="text-sm">{selectedStation.connectors}</p>
+                </SheetDescription>
+              </SheetHeader>
 
-              {selectedEmbedUrl ? (
-                <iframe
-                  title="Station location in Google Maps"
-                  src={selectedEmbedUrl}
-                  className="w-full h-64 rounded-lg border"
-                  loading="lazy"
-                  referrerPolicy="no-referrer-when-downgrade"
-                />
-              ) : null}
+              <div className="px-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Badge className="bg-cyan-600 text-cyan-50">
+                    {selectedStation.powerLabel}
+                  </Badge>
+                  <Badge variant="secondary">{selectedStation.operator}</Badge>
+                </div>
 
-              <Button asChild>
-                <a
-                  href={`https://www.google.com/maps/dir/?api=1&destination=${selectedStation.lat},${selectedStation.lon}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Get Directions
-                </a>
-              </Button>
+                <Tabs defaultValue="overview" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2 bg-slate-800">
+                    <TabsTrigger value="overview">Overview</TabsTrigger>
+                    <TabsTrigger value="map">Map</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="overview" className="space-y-3 pt-3">
+                    <p className="text-sm text-slate-200">
+                      <span className="font-medium">Usage:</span>{" "}
+                      {selectedStation.usage}
+                    </p>
+                    <p className="text-sm text-slate-300">
+                      <span className="font-medium text-slate-100">
+                        Connectors:
+                      </span>{" "}
+                      {selectedStation.connectors}
+                    </p>
+                    <p className="text-sm text-slate-400">
+                      <MapPin className="inline h-4 w-4 mr-1" />
+                      {selectedStation.lat.toFixed(5)},{" "}
+                      {selectedStation.lon.toFixed(5)}
+                    </p>
+                  </TabsContent>
+                  <TabsContent value="map" className="pt-3 space-y-3">
+                    {selectedEmbedUrl ? (
+                      <iframe
+                        title="Station location in Google Maps"
+                        src={selectedEmbedUrl}
+                        className="w-full h-64 rounded-lg border border-slate-700"
+                        loading="lazy"
+                        referrerPolicy="no-referrer-when-downgrade"
+                      />
+                    ) : null}
+                    <Button asChild className="w-full">
+                      <a
+                        href={`https://www.google.com/maps/dir/?api=1&destination=${selectedStation.lat},${selectedStation.lon}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Get Directions
+                      </a>
+                    </Button>
+                  </TabsContent>
+                </Tabs>
+              </div>
             </>
           ) : (
-            <p className="text-slate-600">
-              Click any station marker to view station details.
-            </p>
+            <div className="p-4 text-slate-300">
+              Select a station from the list or map.
+            </div>
           )}
-        </CardContent>
-      </Card>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
