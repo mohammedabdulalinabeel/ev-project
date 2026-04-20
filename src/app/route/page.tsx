@@ -12,7 +12,7 @@ import {
   getMinDistanceToRoute,
   MOCK_STATIONS,
   type Station,
-} from "@/lib/";
+} from "@/lib/stations";
 
 const RouteMap = dynamic(() => import("@/components/RouteMap"), { ssr: false });
 
