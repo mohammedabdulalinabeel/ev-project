@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 
 const routes = [
   { href: "/", label: "Dashboard" },
-  { href: "/stations", label: "Charging Stations" },
+  { href: "/", label: "Charging Stations" },
   { href: "/route", label: "Route Planner" },
   { href: "/battery", label: "Battery Analytics" },
 ];
